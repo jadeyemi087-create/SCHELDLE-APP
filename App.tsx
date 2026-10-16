@@ -101,6 +101,20 @@ const REMINDER_OPTIONS: { value: number | null; label: string }[] = [
   { value: 15, label: '15 min' },
 ];
 const DURATION_OPTIONS = [15, 30, 45, 60];
+const TIME_SLOT_MINUTES = 15;
+const TIME_OPTION_ROW_HEIGHT = 42;
+const TIME_OPTIONS: { value: string | null; label: string }[] = [
+  { value: null, label: 'Anytime' },
+  ...Array.from({ length: (24 * 60) / TIME_SLOT_MINUTES }, (_, index) => {
+    const minutes = index * TIME_SLOT_MINUTES;
+    const value = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    return { value, label: formatTime(value) };
+  }),
+];
+const TIME_OPTION_INDEX: Record<string, number> = TIME_OPTIONS.reduce<Record<string, number>>((accumulator, option, index) => {
+  if (option.value !== null) accumulator[option.value] = index;
+  return accumulator;
+}, {});
 
 function replaceTaskReminderIds(
   currentIds: Record<string, string>,
@@ -983,6 +997,14 @@ function TaskEditor({
   date: string;
 }) {
   const [previewVisible, setPreviewVisible] = useState(false);
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!visible) {
+      setPreviewVisible(false);
+      setTimePickerOpen(false);
+    }
+  }, [visible]);
 
   const parsedPreviewTime = parseTimeInput(draft.timeInput);
   const previewTime = parsedPreviewTime === undefined ? null : parsedPreviewTime;
@@ -1053,19 +1075,11 @@ function TaskEditor({
               <View style={styles.twoColumnFields}>
                 <View style={styles.halfField}>
                   <Text style={styles.fieldLabel}>Time <Text style={styles.optionalText}>· optional</Text></Text>
-                  <View style={styles.fieldInputWrap}>
-                    <Ionicons name="time-outline" size={17} color={COLORS.muted} />
-                    <TextInput
-                      value={draft.timeInput}
-                      onChangeText={(timeInput) => patchDraft({ timeInput, reminderMinutes: timeInput.trim() ? draft.reminderMinutes : null })}
-                      style={styles.inlineInput}
-                      placeholder="9:30 AM"
-                      placeholderTextColor="#9A9291"
-                      keyboardType="numbers-and-punctuation"
-                      returnKeyType="done"
-                      accessibilityLabel="Optional time"
-                    />
-                  </View>
+                  <TimeField
+                    value={previewTime}
+                    open={timePickerOpen}
+                    onToggle={() => setTimePickerOpen((current) => !current)}
+                  />
                 </View>
                 <View style={styles.halfField}>
                   <Text style={styles.fieldLabel}>Duration</Text>
@@ -1075,6 +1089,18 @@ function TaskEditor({
                   </View>
                 </View>
               </View>
+              {timePickerOpen && (
+                <TimeOptionsList
+                  value={previewTime}
+                  onSelect={(time) => {
+                    patchDraft({
+                      timeInput: time === null ? '' : formatTime(time),
+                      reminderMinutes: time === null ? null : draft.reminderMinutes,
+                    });
+                    setTimePickerOpen(false);
+                  }}
+                />
+              )}
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.durationChoices}>
                 {DURATION_OPTIONS.map((duration) => (
                   <ChoiceChip
@@ -1259,6 +1285,82 @@ function ChoiceChip({
     >
       <Text style={[styles.choiceChipText, selected && styles.choiceChipTextSelected, disabled && styles.choiceChipTextDisabled]}>{label}</Text>
     </Pressable>
+  );
+}
+
+function TimeField({
+  value,
+  open,
+  onToggle,
+}: {
+  value: string | null;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onToggle}
+      style={({ pressed }) => [styles.fieldInputWrap, styles.timeTrigger, pressed && styles.choiceChipPressed]}
+      accessibilityRole="button"
+      accessibilityLabel="Choose a time"
+      accessibilityState={{ expanded: open }}
+    >
+      <Ionicons name="time-outline" size={17} color={COLORS.muted} />
+      <Text style={[styles.timeTriggerText, value === null && styles.timeTriggerPlaceholder]}>
+        {value === null ? 'Anytime' : formatTime(value)}
+      </Text>
+      <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={15} color={COLORS.muted} />
+    </Pressable>
+  );
+}
+
+function TimeOptionsList({
+  value,
+  onSelect,
+}: {
+  value: string | null;
+  onSelect: (value: string | null) => void;
+}) {
+  const listRef = useRef<React.ElementRef<typeof ScrollView> | null>(null);
+  const selectedIndex = value === null ? 0 : TIME_OPTION_INDEX[value] ?? -1;
+
+  useEffect(() => {
+    const offset = Math.max(0, selectedIndex * TIME_OPTION_ROW_HEIGHT - TIME_OPTION_ROW_HEIGHT);
+    const timer = setTimeout(() => listRef.current?.scrollTo({ y: offset, animated: false }), 0);
+    return () => clearTimeout(timer);
+  }, [selectedIndex]);
+
+  return (
+    <View style={styles.timeDropdown}>
+      <ScrollView
+        ref={listRef}
+        style={styles.timeDropdownScroll}
+        contentContainerStyle={styles.timeDropdownContent}
+        keyboardShouldPersistTaps="handled"
+        accessibilityLabel="Time options"
+      >
+        {TIME_OPTIONS.map((option, index) => {
+          const selected = (value === null && option.value === null) || option.value === value;
+          return (
+            <Pressable
+              key={option.label}
+              onPress={() => onSelect(option.value)}
+              style={({ pressed }) => [
+                styles.timeOption,
+                index === 0 && styles.timeOptionFirst,
+                selected && styles.timeOptionSelected,
+                pressed && styles.timeOptionPressed,
+              ]}
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
+            >
+              <Text style={[styles.timeOptionText, selected && styles.timeOptionTextSelected]}>{option.label}</Text>
+              {selected && <Ionicons name="checkmark" size={16} color={COLORS.brand} />}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -1492,7 +1594,18 @@ const styles = StyleSheet.create({
   twoColumnFields: { flexDirection: 'row', gap: 10 },
   halfField: { flex: 1 },
   fieldInputWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 43, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.line, borderRadius: 12, paddingHorizontal: 10 },
-  inlineInput: { flex: 1, color: COLORS.ink, fontFamily: FONT.medium, fontSize: 13, height: 42, padding: 0, outlineStyle: 'none' as never },
+  timeTrigger: { justifyContent: 'space-between' },
+  timeTriggerText: { flex: 1, color: COLORS.ink, fontFamily: FONT.medium, fontSize: 13 },
+  timeTriggerPlaceholder: { color: COLORS.muted },
+  timeDropdown: { marginTop: 6, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.line, borderRadius: 12, overflow: 'hidden' },
+  timeDropdownScroll: { maxHeight: 196 },
+  timeDropdownContent: { paddingVertical: 3 },
+  timeOption: { height: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 11 },
+  timeOptionFirst: { borderBottomWidth: 1, borderBottomColor: '#F0E7E3', marginBottom: 3 },
+  timeOptionSelected: { backgroundColor: '#F6EDE8' },
+  timeOptionPressed: { backgroundColor: '#F0E4DE' },
+  timeOptionText: { color: COLORS.ink, fontFamily: FONT.medium, fontSize: 13 },
+  timeOptionTextSelected: { color: COLORS.brand, fontFamily: FONT.semibold },
   durationValue: { color: COLORS.ink, fontFamily: FONT.medium, fontSize: 13 },
   durationChoices: { gap: 7, paddingTop: 8, paddingBottom: 15 },
   choiceRow: { gap: 7, paddingBottom: 14 },
