@@ -959,6 +959,22 @@ function TaskEditor({
   onDelete: () => void;
   date: string;
 }) {
+  const [previewVisible, setPreviewVisible] = useState(false);
+
+  const parsedPreviewTime = parseTimeInput(draft.timeInput);
+  const previewTime = parsedPreviewTime === undefined ? null : parsedPreviewTime;
+  const previewTask: DaybookTask = {
+    id: 'preview',
+    title: draft.title.trim() || 'Untitled task',
+    date,
+    time: previewTime,
+    duration: draft.duration,
+    category: draft.category,
+    reminderMinutes: draft.timeInput.trim() ? draft.reminderMinutes : null,
+    recurrence: recurrenceFromDraft(draft),
+    createdAt: Date.now(),
+  };
+
   const patchDraft = (patch: Partial<DraftTask>) => setDraft((current) => ({ ...current, ...patch }));
   const toggleWeekday = (weekday: number) => {
     const selected = draft.weekdays.includes(weekday);
@@ -966,6 +982,7 @@ function TaskEditor({
   };
 
   return (
+    <>
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.modalRoot}>
         <Pressable style={styles.modalBackdrop} onPress={onClose} accessibilityLabel="Close task editor" />
@@ -1143,6 +1160,11 @@ function TaskEditor({
                 )
               )}
 
+              <Pressable onPress={() => setPreviewVisible(true)} style={({ pressed }) => [styles.previewButton, pressed && styles.pressed]}>
+                <Ionicons name="eye-outline" size={17} color={COLORS.brand} />
+                <Text style={styles.previewButtonText}>Preview task</Text>
+              </Pressable>
+
               <Pressable style={({ pressed }) => [styles.saveButton, pressed && styles.primaryButtonPressed]} onPress={onSave}>
                 <Text style={styles.saveButtonText}>{editing ? 'Save changes' : 'Add to my day'}</Text>
                 <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
@@ -1153,6 +1175,32 @@ function TaskEditor({
         </KeyboardAvoidingView>
       </View>
     </Modal>
+
+    <Modal visible={previewVisible} transparent animationType="fade" onRequestClose={() => setPreviewVisible(false)}>
+      <View style={styles.previewModalRoot}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setPreviewVisible(false)} accessibilityLabel="Close preview" />
+        <View style={styles.previewCard}>
+          <View style={styles.sheetHeader}>
+            <View>
+              <TinyLabel>PREVIEW</TinyLabel>
+              <Text style={styles.sheetTitle}>How it looks</Text>
+            </View>
+            <Pressable onPress={() => setPreviewVisible(false)} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close preview">
+              <Ionicons name="close" size={21} color={COLORS.ink} />
+            </Pressable>
+          </View>
+          <TaskRow
+            instance={{ task: previewTask, date, completed: false }}
+            last
+            onEdit={() => undefined}
+            onToggle={() => undefined}
+            onReschedule={() => undefined}
+          />
+          <Text style={styles.editorFootnote}>Preview only — not saved yet.</Text>
+        </View>
+      </View>
+    </Modal>
+    </>
   );
 }
 
@@ -1391,6 +1439,10 @@ const styles = StyleSheet.create({
   addButton: { position: 'absolute', right: 21, bottom: 22, width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.brand, ...(Platform.OS === 'web' ? { boxShadow: '0 5px 14px rgba(94,42,14,0.22)' } as object : { elevation: 4 }) },
   addButtonPressed: { opacity: 0.86, transform: [{ scale: 0.95 }] },
   modalRoot: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'transparent' },
+  previewModalRoot: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent', paddingHorizontal: 20 },
+  previewCard: { width: '100%', maxWidth: 420, backgroundColor: COLORS.surface, borderRadius: 22, paddingTop: 9, paddingHorizontal: 16, paddingBottom: 16, shadowColor: '#3D2520', shadowOpacity: 0.18, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
+  previewButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 44, borderRadius: 22, borderWidth: 1, borderColor: COLORS.brand, marginBottom: 10, backgroundColor: COLORS.card },
+  previewButtonText: { color: COLORS.brand, fontFamily: FONT.semibold, fontSize: 14 },
   modalBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(31,31,34,0.38)' },
   keyboardSheetWrap: { justifyContent: 'flex-end', maxHeight: '96%' },
   editorSheet: { backgroundColor: COLORS.surface, borderTopLeftRadius: 26, borderTopRightRadius: 26, maxHeight: '96%', paddingTop: 9, paddingHorizontal: 21, paddingBottom: Platform.OS === 'ios' ? 25 : 16 },
