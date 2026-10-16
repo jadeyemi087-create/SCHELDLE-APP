@@ -225,6 +225,29 @@ function AppContent() {
         else subscription = result;
       })
       .catch((error) => console.warn('Could not listen for reminder actions.', error));
+
+    if (Platform.OS !== 'web') {
+      void (async () => {
+        try {
+          const Notifications = await import('expo-notifications');
+          const response = await Notifications.getLastNotificationResponseAsync();
+          if (!mounted || !response) return;
+          const data = response.notification.request.content.data as { taskId?: string; date?: string };
+          if (!data.taskId || !data.date) return;
+          if (response.actionIdentifier === 'MARK_DONE') {
+            actionHandlerRef.current({ type: 'done', taskId: data.taskId, date: data.date });
+          } else if (response.actionIdentifier === 'SNOOZE_10') {
+            actionHandlerRef.current({ type: 'snooze', taskId: data.taskId, date: data.date });
+          } else {
+            actionHandlerRef.current({ type: 'open', taskId: data.taskId, date: data.date });
+          }
+          await Notifications.clearLastNotificationResponseAsync?.();
+        } catch (error) {
+          console.warn('Could not handle the last notification response.', error);
+        }
+      })();
+    }
+
     return () => {
       mounted = false;
       subscription?.remove();
