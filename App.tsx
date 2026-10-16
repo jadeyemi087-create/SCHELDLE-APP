@@ -1117,8 +1117,13 @@ function TaskEditor({
                     key={option.label}
                     label={option.label}
                     selected={draft.reminderMinutes === option.value}
-                    disabled={!draft.timeInput.trim() && option.value !== null}
-                    onPress={() => patchDraft({ reminderMinutes: option.value })}
+                    onPress={() => {
+                      if (option.value !== null && !draft.timeInput.trim()) {
+                        patchDraft({ timeInput: '9:00 AM', reminderMinutes: option.value });
+                      } else {
+                        patchDraft({ reminderMinutes: option.value });
+                      }
+                    }}
                   />
                 ))}
               </ScrollView>
