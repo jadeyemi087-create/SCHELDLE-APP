@@ -1004,8 +1004,9 @@ function TaskEditor({
     patchDraft({ weekdays: selected ? draft.weekdays.filter((day) => day !== weekday) : [...draft.weekdays, weekday] });
   };
 
+  const closePreview = () => setPreviewVisible(false);
+
   return (
-    <>
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.modalRoot}>
         <Pressable style={styles.modalBackdrop} onPress={onClose} accessibilityLabel="Close task editor" />
@@ -1109,7 +1110,7 @@ function TaskEditor({
 
               <View style={styles.sectionLabelRow}>
                 <Text style={styles.fieldLabel}>Reminder</Text>
-                {!draft.timeInput.trim() && <Text style={styles.optionalText}>Add a time first</Text>}
+                {!draft.timeInput.trim() && <Text style={styles.optionalText}>we’ll set 9:00 AM</Text>}
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceRow}>
                 {REMINDER_OPTIONS.map((option) => (
@@ -1201,34 +1202,35 @@ function TaskEditor({
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
-      </View>
-    </Modal>
 
-    <Modal visible={previewVisible} transparent animationType="fade" onRequestClose={() => setPreviewVisible(false)}>
-      <View style={styles.previewModalRoot}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setPreviewVisible(false)} accessibilityLabel="Close preview" />
-        <View style={styles.previewCard}>
-          <View style={styles.sheetHeader}>
-            <View>
-              <TinyLabel>PREVIEW</TinyLabel>
-              <Text style={styles.sheetTitle}>How it looks</Text>
+        {previewVisible && (
+          <View style={styles.previewOverlay}>
+            <Pressable style={styles.modalBackdrop} onPress={closePreview} accessibilityLabel="Close preview" />
+            <View style={styles.previewCard}>
+              <View style={styles.sheetHeader}>
+                <View>
+                  <TinyLabel>PREVIEW</TinyLabel>
+                  <Text style={styles.sheetTitle}>How it looks</Text>
+                </View>
+                <Pressable onPress={closePreview} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close preview">
+                  <Ionicons name="close" size={21} color={COLORS.ink} />
+                </Pressable>
+              </View>
+              <ScrollView style={styles.previewScroll} contentContainerStyle={styles.previewScrollContent} showsVerticalScrollIndicator={false}>
+                <TaskRow
+                  instance={{ task: previewTask, date, completed: false }}
+                  last
+                  onEdit={() => undefined}
+                  onToggle={() => undefined}
+                  onReschedule={() => undefined}
+                />
+              </ScrollView>
+              <Text style={styles.editorFootnote}>Preview only — not saved yet.</Text>
             </View>
-            <Pressable onPress={() => setPreviewVisible(false)} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Close preview">
-              <Ionicons name="close" size={21} color={COLORS.ink} />
-            </Pressable>
           </View>
-          <TaskRow
-            instance={{ task: previewTask, date, completed: false }}
-            last
-            onEdit={() => undefined}
-            onToggle={() => undefined}
-            onReschedule={() => undefined}
-          />
-          <Text style={styles.editorFootnote}>Preview only — not saved yet.</Text>
-        </View>
+        )}
       </View>
     </Modal>
-    </>
   );
 }
 
@@ -1251,7 +1253,7 @@ function ChoiceChip({
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={[styles.choiceChip, selected && styles.choiceChipSelected, disabled && styles.choiceChipDisabled]}
+      style={({ pressed }) => [styles.choiceChip, selected && styles.choiceChipSelected, disabled && styles.choiceChipDisabled, pressed && styles.choiceChipPressed]}
       accessibilityRole="button"
       accessibilityState={{ selected, disabled }}
     >
@@ -1467,8 +1469,10 @@ const styles = StyleSheet.create({
   addButton: { position: 'absolute', right: 21, bottom: 22, width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.brand, ...(Platform.OS === 'web' ? { boxShadow: '0 5px 14px rgba(94,42,14,0.22)' } as object : { elevation: 4 }) },
   addButtonPressed: { opacity: 0.86, transform: [{ scale: 0.95 }] },
   modalRoot: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'transparent' },
-  previewModalRoot: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent', paddingHorizontal: 20 },
-  previewCard: { width: '100%', maxWidth: 420, backgroundColor: COLORS.surface, borderRadius: 22, paddingTop: 9, paddingHorizontal: 16, paddingBottom: 16, shadowColor: '#3D2520', shadowOpacity: 0.18, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 8 },
+  previewOverlay: { ...StyleSheet.absoluteFill, zIndex: 20, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+  previewCard: { width: '100%', maxWidth: 420, maxHeight: '80%', backgroundColor: COLORS.surface, borderRadius: 22, paddingTop: 9, paddingHorizontal: 16, paddingBottom: 16, elevation: 8, ...(Platform.OS === 'web' ? { boxShadow: '0 18px 44px rgba(61, 37, 32, 0.26)' } as object : { shadowColor: '#3D2520', shadowOpacity: 0.18, shadowRadius: 24, shadowOffset: { width: 0, height: 12 } }) },
+  previewScroll: { flexGrow: 0 },
+  previewScrollContent: { paddingBottom: 2 },
   previewButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 44, borderRadius: 22, borderWidth: 1, borderColor: COLORS.brand, marginBottom: 10, backgroundColor: COLORS.card },
   previewButtonText: { color: COLORS.brand, fontFamily: FONT.semibold, fontSize: 14 },
   modalBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(31,31,34,0.38)' },
@@ -1495,6 +1499,7 @@ const styles = StyleSheet.create({
   choiceChip: { minHeight: 35, paddingHorizontal: 12, borderRadius: 18, borderWidth: 1, borderColor: '#E4DAD6', alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.card },
   choiceChipSelected: { backgroundColor: COLORS.brand, borderColor: COLORS.brand },
   choiceChipDisabled: { opacity: 0.42 },
+  choiceChipPressed: { opacity: 0.72 },
   choiceChipText: { color: COLORS.ink, fontFamily: FONT.medium, fontSize: 12 },
   choiceChipTextSelected: { color: COLORS.card, fontFamily: FONT.semibold },
   choiceChipTextDisabled: { color: COLORS.muted },
