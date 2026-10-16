@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Daybook",
+    "slug": "daybook-planner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "daybook",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "imageWidth": 200,
+      "resizeMode": "contain",
+      "backgroundColor": "#F8F2F0"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.daybook.planner"
+    },
+    "android": {
+      "package": "com.daybook.planner",
+      "adaptiveIcon": {
+        "backgroundColor": "#E8D9DA",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#5E2A0E",
+          "defaultChannel": "daybook-reminders"
+        }
+      ],
+      "expo-sqlite"
+    ]
+  }
+}
