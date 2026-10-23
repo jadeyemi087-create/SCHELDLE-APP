@@ -184,6 +184,8 @@ function AppContent() {
   const [formError, setFormError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [notice, setNotice] = useState('');
+  const [signUpVisible, setSignUpVisible] = useState(false);
+  const [profileName, setProfileName] = useState('');
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionHandlerRef = useRef<(action: ReminderAction) => void>(() => undefined);
 
@@ -756,6 +758,19 @@ function AppContent() {
     );
   }
 
+  if (signUpVisible) {
+    return (
+      <SignUpScreen
+        onClose={() => setSignUpVisible(false)}
+        onComplete={(name) => {
+          setProfileName(name);
+          setSignUpVisible(false);
+          showNotice(`Welcome, ${name.trim().split(' ').filter(Boolean)[0]}. Keep planning at your own pace.`);
+        }}
+      />
+    );
+  }
+
   return (
     <View style={styles.outerShell}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -774,9 +789,22 @@ function AppContent() {
                 </View>
                 <Text style={styles.brandName}>daybook</Text>
               </View>
-              <View style={styles.localBadge}>
-                <Ionicons name="phone-portrait-outline" size={12} color={COLORS.muted} />
-                <Text style={styles.localBadgeText}>ON DEVICE</Text>
+              <View style={styles.brandActions}>
+                <View style={styles.localBadge}>
+                  <Ionicons name="phone-portrait-outline" size={12} color={COLORS.muted} />
+                  <Text style={styles.localBadgeText}>ON DEVICE</Text>
+                </View>
+                <Pressable
+                  onPress={() => setSignUpVisible(true)}
+                  style={({ pressed }) => [styles.signUpHeaderButton, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={profileName ? `Profile for ${profileName}` : 'Sign up'}
+                >
+                  <Ionicons name={profileName ? 'person-circle-outline' : 'person-add-outline'} size={15} color={COLORS.brand} />
+                  <Text style={styles.signUpHeaderText} numberOfLines={1}>
+                    {profileName ? profileName.split(' ').filter(Boolean)[0] : 'Sign up'}
+                  </Text>
+                </Pressable>
               </View>
             </View>
 
@@ -1260,6 +1288,254 @@ function TaskEditor({
   );
 }
 
+function SignUpScreen({
+  onClose,
+  onComplete,
+}: {
+  onClose: () => void;
+  onComplete: (name: string) => void;
+}) {
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
+  const [error, setError] = useState('');
+  const [submittedName, setSubmittedName] = useState('');
+
+  const handleCreateAccount = () => {
+    const name = fullName.trim();
+    const normalizedEmail = email.trim();
+    const emailParts = normalizedEmail.split('@');
+    const emailDomain = emailParts[1] ?? '';
+    const validEmail = emailParts.length === 2
+      && emailParts[0].length > 0
+      && emailDomain.includes('.')
+      && !emailDomain.startsWith('.')
+      && !emailDomain.endsWith('.')
+      && !normalizedEmail.includes(' ');
+    if (name.length < 2) {
+      setError('Please enter your name.');
+      return;
+    }
+    if (!validEmail) {
+      setError('Enter a valid email address.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Use a password with at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Those passwords don’t match yet.');
+      return;
+    }
+
+    Keyboard.dismiss();
+    setError('');
+    setSubmittedName(name);
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
+  };
+
+  const firstName = submittedName.trim().split(' ').filter(Boolean)[0] ?? '';
+
+  return (
+    <View style={styles.outerShell}>
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={styles.signUpSafeArea} edges={['top', 'bottom']}>
+        <View style={styles.signUpFrame}>
+          <KeyboardAvoidingView
+            style={styles.signUpKeyboard}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <ScrollView
+              contentContainerStyle={styles.signUpContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.signUpHeader}>
+                <View style={styles.brandLockup}>
+                  <View style={styles.brandMark}>
+                    <Ionicons name="checkmark" size={17} color={COLORS.card} />
+                  </View>
+                  <Text style={styles.brandName}>daybook</Text>
+                </View>
+                <Pressable
+                  onPress={onClose}
+                  style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back to Daybook"
+                >
+                  <Ionicons name="close" size={21} color={COLORS.ink} />
+                </Pressable>
+              </View>
+
+              {!submittedName ? (
+                <>
+                  <View style={styles.signUpHero}>
+                    <View style={styles.signUpHeroIcon}>
+                      <Ionicons name="sunny-outline" size={23} color={COLORS.brand} />
+                    </View>
+                    <TinyLabel>MAKE A LITTLE ROOM</TinyLabel>
+                    <Text style={styles.signUpTitle}>Your daybook starts with you.</Text>
+                    <Text style={styles.signUpSubtitle}>Create a profile and make space for what matters, one day at a time.</Text>
+                  </View>
+
+                  <View style={styles.signUpCard}>
+                    <Text style={styles.signUpCardTitle}>Create your account</Text>
+                    <Text style={styles.signUpCardSubtitle}>A few details to get started.</Text>
+
+                    <View style={styles.signUpField}>
+                      <Text style={styles.signUpLabel}>Full name</Text>
+                      <View style={styles.signUpInputWrap}>
+                        <Ionicons name="person-outline" size={17} color={COLORS.muted} />
+                        <TextInput
+                          value={fullName}
+                          onChangeText={setFullName}
+                          style={styles.signUpInput}
+                          placeholder="Your name"
+                          placeholderTextColor="#9A9291"
+                          autoCapitalize="words"
+                          autoComplete="name"
+                          returnKeyType="next"
+                          maxLength={80}
+                          accessibilityLabel="Full name"
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.signUpField}>
+                      <Text style={styles.signUpLabel}>Email address</Text>
+                      <View style={styles.signUpInputWrap}>
+                        <Ionicons name="mail-outline" size={17} color={COLORS.muted} />
+                        <TextInput
+                          value={email}
+                          onChangeText={setEmail}
+                          style={styles.signUpInput}
+                          placeholder="you@example.com"
+                          placeholderTextColor="#9A9291"
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          autoComplete="email"
+                          keyboardType="email-address"
+                          returnKeyType="next"
+                          accessibilityLabel="Email address"
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.signUpField}>
+                      <Text style={styles.signUpLabel}>Password</Text>
+                      <View style={styles.signUpInputWrap}>
+                        <Ionicons name="lock-closed-outline" size={17} color={COLORS.muted} />
+                        <TextInput
+                          value={password}
+                          onChangeText={setPassword}
+                          style={styles.signUpInput}
+                          placeholder="At least 8 characters"
+                          placeholderTextColor="#9A9291"
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          autoComplete="new-password"
+                          secureTextEntry={!passwordVisible}
+                          returnKeyType="next"
+                          maxLength={128}
+                          accessibilityLabel="Password"
+                        />
+                        <Pressable
+                          onPress={() => setPasswordVisible((current) => !current)}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'}
+                        >
+                          <Ionicons name={passwordVisible ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.muted} />
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    <View style={styles.signUpField}>
+                      <Text style={styles.signUpLabel}>Confirm password</Text>
+                      <View style={styles.signUpInputWrap}>
+                        <Ionicons name="shield-checkmark-outline" size={17} color={COLORS.muted} />
+                        <TextInput
+                          value={confirmPassword}
+                          onChangeText={setConfirmPassword}
+                          style={styles.signUpInput}
+                          placeholder="Type it again"
+                          placeholderTextColor="#9A9291"
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          autoComplete="new-password"
+                          secureTextEntry={!confirmPasswordVisible}
+                          returnKeyType="done"
+                          maxLength={128}
+                          onSubmitEditing={handleCreateAccount}
+                          accessibilityLabel="Confirm password"
+                        />
+                        <Pressable
+                          onPress={() => setConfirmPasswordVisible((current) => !current)}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                          accessibilityLabel={confirmPasswordVisible ? 'Hide confirm password' : 'Show confirm password'}
+                        >
+                          <Ionicons name={confirmPasswordVisible ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.muted} />
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    {error.length > 0 && <Text style={styles.signUpError} accessibilityRole="alert">{error}</Text>}
+
+                    <Pressable
+                      onPress={handleCreateAccount}
+                      style={({ pressed }) => [styles.signUpSubmit, pressed && styles.primaryButtonPressed]}
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.signUpSubmitText}>Create account</Text>
+                      <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.signUpPrivacyNote}>
+                    <Ionicons name="lock-closed-outline" size={15} color={COLORS.brand} />
+                    <Text style={styles.signUpPrivacyText}>
+                      Sign-up is a preview: no account service is connected. Your password is not sent or saved.
+                    </Text>
+                  </View>
+                  <Pressable onPress={onClose} style={styles.signUpSkip} accessibilityRole="button">
+                    <Text style={styles.signUpSkipText}>Keep using Daybook on this device</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <View style={styles.signUpSuccessCard}>
+                  <View style={styles.signUpSuccessIcon}>
+                    <Ionicons name="checkmark" size={26} color={COLORS.card} />
+                  </View>
+                  <TinyLabel>READY WHEN YOU ARE</TinyLabel>
+                  <Text style={styles.signUpSuccessTitle}>Your profile is ready, {firstName}.</Text>
+                  <Text style={styles.signUpSuccessBody}>
+                    This is a sign-up preview. Your email and password were not sent or saved; Daybook still keeps your plans on this device.
+                  </Text>
+                  <Pressable
+                    onPress={() => onComplete(submittedName)}
+                    style={({ pressed }) => [styles.signUpSubmit, pressed && styles.primaryButtonPressed]}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.signUpSubmitText}>Continue to Daybook</Text>
+                    <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
+                  </Pressable>
+                </View>
+              )}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
+      </SafeAreaView>
+    </View>
+  );
+}
+
 function formatWeekdayForIndex(index: number): string {
   return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][index];
 }
@@ -1442,6 +1718,36 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   localBadgeText: { fontFamily: FONT.bold, color: COLORS.muted, fontSize: 9, letterSpacing: 0.7 },
+  brandActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  signUpHeaderButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, minHeight: 31, maxWidth: 118, paddingHorizontal: 9, backgroundColor: COLORS.card, borderRadius: 18, borderWidth: 1, borderColor: COLORS.line },
+  signUpHeaderText: { color: COLORS.brand, fontFamily: FONT.semibold, fontSize: 10, maxWidth: 77 },
+  signUpSafeArea: { flex: 1, width: '100%', alignItems: 'center', backgroundColor: COLORS.surface },
+  signUpFrame: { flex: 1, width: '100%', maxWidth: 480, overflow: 'hidden', backgroundColor: COLORS.surface, ...(Platform.OS === 'web' ? { borderRadius: 28, marginVertical: 24, boxShadow: '0 16px 50px rgba(61, 37, 32, 0.12)' } as object : {}) },
+  signUpKeyboard: { flex: 1 },
+  signUpContent: { flexGrow: 1, width: '100%', maxWidth: 480, alignSelf: 'center', justifyContent: 'center', paddingHorizontal: 21, paddingVertical: 18 },
+  signUpHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 17 },
+  signUpHero: { marginBottom: 18 },
+  signUpHeroIcon: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.peach, marginBottom: 15 },
+  signUpTitle: { color: COLORS.ink, fontFamily: FONT.semibold, fontSize: 28, lineHeight: 33, letterSpacing: -0.5, marginTop: 5 },
+  signUpSubtitle: { color: COLORS.muted, fontFamily: FONT.medium, fontSize: 14, lineHeight: 20, marginTop: 5 },
+  signUpCard: { backgroundColor: COLORS.card, borderRadius: 20, borderWidth: 1, borderColor: COLORS.line, padding: 17 },
+  signUpCardTitle: { color: COLORS.ink, fontFamily: FONT.semibold, fontSize: 19 },
+  signUpCardSubtitle: { color: COLORS.muted, fontFamily: FONT.medium, fontSize: 12, marginTop: 3, marginBottom: 2 },
+  signUpField: { marginTop: 13 },
+  signUpLabel: { color: COLORS.ink, fontFamily: FONT.semibold, fontSize: 12, marginBottom: 6 },
+  signUpInputWrap: { minHeight: 47, flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#FFFEFD', borderWidth: 1, borderColor: COLORS.line, borderRadius: 12, paddingHorizontal: 11 },
+  signUpInput: { flex: 1, minWidth: 0, height: 45, color: COLORS.ink, fontFamily: FONT.medium, fontSize: 13, padding: 0, outlineStyle: 'none' as never },
+  signUpError: { color: COLORS.danger, fontFamily: FONT.medium, fontSize: 12, marginTop: 11 },
+  signUpSubmit: { width: '100%', minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.brand, borderRadius: 25, marginTop: 16, paddingHorizontal: 16 },
+  signUpSubmitText: { color: COLORS.card, fontFamily: FONT.semibold, fontSize: 14 },
+  signUpPrivacyNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: '#F1E9E5', borderRadius: 13, paddingHorizontal: 12, paddingVertical: 11, marginTop: 13 },
+  signUpPrivacyText: { flex: 1, color: COLORS.muted, fontFamily: FONT.medium, fontSize: 11, lineHeight: 16 },
+  signUpSkip: { alignItems: 'center', justifyContent: 'center', minHeight: 38, marginTop: 7 },
+  signUpSkipText: { color: COLORS.brand, fontFamily: FONT.semibold, fontSize: 12 },
+  signUpSuccessCard: { alignItems: 'center', backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.line, borderRadius: 22, padding: 22 },
+  signUpSuccessIcon: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.brand, borderRadius: 19, marginBottom: 18 },
+  signUpSuccessTitle: { color: COLORS.ink, fontFamily: FONT.semibold, fontSize: 24, lineHeight: 30, textAlign: 'center', marginTop: 7 },
+  signUpSuccessBody: { color: COLORS.muted, fontFamily: FONT.medium, fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 9 },
   heroBlock: { marginBottom: 20 },
   heroTitle: { color: COLORS.ink, fontFamily: FONT.semibold, fontSize: 29, lineHeight: 34, letterSpacing: -0.7 },
   heroSubtitle: { color: COLORS.muted, fontFamily: FONT.medium, fontSize: 15, lineHeight: 21, marginTop: 3 },
