@@ -184,7 +184,7 @@ function AppContent() {
   const [formError, setFormError] = useState('');
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [notice, setNotice] = useState('');
-  const [signUpVisible, setSignUpVisible] = useState(false);
+  const [accountAccessVisible, setAccountAccessVisible] = useState(false);
   const [profileName, setProfileName] = useState('');
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionHandlerRef = useRef<(action: ReminderAction) => void>(() => undefined);
@@ -758,13 +758,13 @@ function AppContent() {
     );
   }
 
-  if (signUpVisible) {
+  if (accountAccessVisible) {
     return (
-      <SignUpScreen
-        onClose={() => setSignUpVisible(false)}
+      <AccountAccessScreen
+        onClose={() => setAccountAccessVisible(false)}
         onComplete={(name) => {
           setProfileName(name);
-          setSignUpVisible(false);
+          setAccountAccessVisible(false);
           showNotice(`Welcome, ${name.trim().split(' ').filter(Boolean)[0]}. Keep planning at your own pace.`);
         }}
       />
@@ -795,7 +795,7 @@ function AppContent() {
                   <Text style={styles.localBadgeText}>ON DEVICE</Text>
                 </View>
                 <Pressable
-                  onPress={() => setSignUpVisible(true)}
+                  onPress={() => setAccountAccessVisible(true)}
                   style={({ pressed }) => [styles.signUpHeaderButton, pressed && styles.pressed]}
                   accessibilityRole="button"
                   accessibilityLabel={profileName ? `Profile for ${profileName}` : 'Sign up'}
@@ -1288,7 +1288,7 @@ function TaskEditor({
   );
 }
 
-function SignUpScreen({
+function AccountAccessScreen({
   onClose,
   onComplete,
 }: {
@@ -1303,8 +1303,10 @@ function SignUpScreen({
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [error, setError] = useState('');
   const [submittedName, setSubmittedName] = useState('');
+  const [mode, setMode] = useState<'signup' | 'login'>('signup');
+  const isLoginMode = mode === 'login';
 
-  const handleCreateAccount = () => {
+  const handleSubmit = () => {
     const name = fullName.trim();
     const normalizedEmail = email.trim();
     const emailParts = normalizedEmail.split('@');
@@ -1315,29 +1317,47 @@ function SignUpScreen({
       && !emailDomain.startsWith('.')
       && !emailDomain.endsWith('.')
       && !normalizedEmail.includes(' ');
-    if (name.length < 2) {
-      setError('Please enter your name.');
-      return;
-    }
     if (!validEmail) {
       setError('Enter a valid email address.');
       return;
     }
-    if (password.length < 8) {
-      setError('Use a password with at least 8 characters.');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError('Those passwords don’t match yet.');
-      return;
+    if (isLoginMode) {
+      if (!password) {
+        setError('Enter your password to continue.');
+        return;
+      }
+    } else {
+      if (name.length < 2) {
+        setError('Please enter your name.');
+        return;
+      }
+      if (password.length < 8) {
+        setError('Use a password with at least 8 characters.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Those passwords don’t match yet.');
+        return;
+      }
     }
 
     Keyboard.dismiss();
     setError('');
-    setSubmittedName(name);
+    const loginName = normalizedEmail.split('@')[0] || 'Daybook';
+    setSubmittedName(isLoginMode ? loginName : name);
     setEmail('');
     setPassword('');
     setConfirmPassword('');
+  };
+
+  const switchMode = () => {
+    setMode((current) => current === 'signup' ? 'login' : 'signup');
+    setError('');
+    setSubmittedName('');
+    setPassword('');
+    setConfirmPassword('');
+    setPasswordVisible(false);
+    setConfirmPasswordVisible(false);
   };
 
   const firstName = submittedName.trim().split(' ').filter(Boolean)[0] ?? '';
@@ -1379,33 +1399,41 @@ function SignUpScreen({
                     <View style={styles.signUpHeroIcon}>
                       <Ionicons name="sunny-outline" size={23} color={COLORS.brand} />
                     </View>
-                    <TinyLabel>MAKE A LITTLE ROOM</TinyLabel>
-                    <Text style={styles.signUpTitle}>Your daybook starts with you.</Text>
-                    <Text style={styles.signUpSubtitle}>Create a profile and make space for what matters, one day at a time.</Text>
+                    <TinyLabel>{isLoginMode ? 'WELCOME BACK' : 'MAKE A LITTLE ROOM'}</TinyLabel>
+                    <Text style={styles.signUpTitle}>
+                      {isLoginMode ? 'Good to have you back.' : 'Your daybook starts with you.'}
+                    </Text>
+                    <Text style={styles.signUpSubtitle}>
+                      {isLoginMode ? 'Log in to return to your plans and routines.' : 'Create a profile and make space for what matters, one day at a time.'}
+                    </Text>
                   </View>
 
                   <View style={styles.signUpCard}>
-                    <Text style={styles.signUpCardTitle}>Create your account</Text>
-                    <Text style={styles.signUpCardSubtitle}>A few details to get started.</Text>
+                    <Text style={styles.signUpCardTitle}>{isLoginMode ? 'Log in to Daybook' : 'Create your account'}</Text>
+                    <Text style={styles.signUpCardSubtitle}>
+                      {isLoginMode ? 'Pick up right where you left off.' : 'A few details to get started.'}
+                    </Text>
 
-                    <View style={styles.signUpField}>
-                      <Text style={styles.signUpLabel}>Full name</Text>
-                      <View style={styles.signUpInputWrap}>
-                        <Ionicons name="person-outline" size={17} color={COLORS.muted} />
-                        <TextInput
-                          value={fullName}
-                          onChangeText={setFullName}
-                          style={styles.signUpInput}
-                          placeholder="Your name"
-                          placeholderTextColor="#9A9291"
-                          autoCapitalize="words"
-                          autoComplete="name"
-                          returnKeyType="next"
-                          maxLength={80}
-                          accessibilityLabel="Full name"
-                        />
+                    {!isLoginMode && (
+                      <View style={styles.signUpField}>
+                        <Text style={styles.signUpLabel}>Full name</Text>
+                        <View style={styles.signUpInputWrap}>
+                          <Ionicons name="person-outline" size={17} color={COLORS.muted} />
+                          <TextInput
+                            value={fullName}
+                            onChangeText={setFullName}
+                            style={styles.signUpInput}
+                            placeholder="Your name"
+                            placeholderTextColor="#9A9291"
+                            autoCapitalize="words"
+                            autoComplete="name"
+                            returnKeyType="next"
+                            maxLength={80}
+                            accessibilityLabel="Full name"
+                          />
+                        </View>
                       </View>
-                    </View>
+                    )}
 
                     <View style={styles.signUpField}>
                       <Text style={styles.signUpLabel}>Email address</Text>
@@ -1428,21 +1456,32 @@ function SignUpScreen({
                     </View>
 
                     <View style={styles.signUpField}>
-                      <Text style={styles.signUpLabel}>Password</Text>
+                      <View style={styles.signUpLabelRow}>
+                        <Text style={[styles.signUpLabel, styles.signUpLabelInRow]}>Password</Text>
+                        {isLoginMode && (
+                          <Pressable
+                            onPress={() => setError('Password reset is not connected in this preview.')}
+                            accessibilityRole="button"
+                          >
+                            <Text style={styles.signUpForgotLink}>Forgot password?</Text>
+                          </Pressable>
+                        )}
+                      </View>
                       <View style={styles.signUpInputWrap}>
                         <Ionicons name="lock-closed-outline" size={17} color={COLORS.muted} />
                         <TextInput
                           value={password}
                           onChangeText={setPassword}
                           style={styles.signUpInput}
-                          placeholder="At least 8 characters"
+                          placeholder={isLoginMode ? 'Your password' : 'At least 8 characters'}
                           placeholderTextColor="#9A9291"
                           autoCapitalize="none"
                           autoCorrect={false}
-                          autoComplete="new-password"
+                          autoComplete={isLoginMode ? 'current-password' : 'new-password'}
                           secureTextEntry={!passwordVisible}
-                          returnKeyType="next"
+                          returnKeyType={isLoginMode ? 'done' : 'next'}
                           maxLength={128}
+                          onSubmitEditing={isLoginMode ? handleSubmit : undefined}
                           accessibilityLabel="Password"
                         />
                         <Pressable
@@ -1456,44 +1495,46 @@ function SignUpScreen({
                       </View>
                     </View>
 
-                    <View style={styles.signUpField}>
-                      <Text style={styles.signUpLabel}>Confirm password</Text>
-                      <View style={styles.signUpInputWrap}>
-                        <Ionicons name="shield-checkmark-outline" size={17} color={COLORS.muted} />
-                        <TextInput
-                          value={confirmPassword}
-                          onChangeText={setConfirmPassword}
-                          style={styles.signUpInput}
-                          placeholder="Type it again"
-                          placeholderTextColor="#9A9291"
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                          autoComplete="new-password"
-                          secureTextEntry={!confirmPasswordVisible}
-                          returnKeyType="done"
-                          maxLength={128}
-                          onSubmitEditing={handleCreateAccount}
-                          accessibilityLabel="Confirm password"
-                        />
-                        <Pressable
-                          onPress={() => setConfirmPasswordVisible((current) => !current)}
-                          hitSlop={8}
-                          accessibilityRole="button"
-                          accessibilityLabel={confirmPasswordVisible ? 'Hide confirm password' : 'Show confirm password'}
-                        >
-                          <Ionicons name={confirmPasswordVisible ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.muted} />
-                        </Pressable>
+                    {!isLoginMode && (
+                      <View style={styles.signUpField}>
+                        <Text style={styles.signUpLabel}>Confirm password</Text>
+                        <View style={styles.signUpInputWrap}>
+                          <Ionicons name="shield-checkmark-outline" size={17} color={COLORS.muted} />
+                          <TextInput
+                            value={confirmPassword}
+                            onChangeText={setConfirmPassword}
+                            style={styles.signUpInput}
+                            placeholder="Type it again"
+                            placeholderTextColor="#9A9291"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            autoComplete="new-password"
+                            secureTextEntry={!confirmPasswordVisible}
+                            returnKeyType="done"
+                            maxLength={128}
+                            onSubmitEditing={handleSubmit}
+                            accessibilityLabel="Confirm password"
+                          />
+                          <Pressable
+                            onPress={() => setConfirmPasswordVisible((current) => !current)}
+                            hitSlop={8}
+                            accessibilityRole="button"
+                            accessibilityLabel={confirmPasswordVisible ? 'Hide confirm password' : 'Show confirm password'}
+                          >
+                            <Ionicons name={confirmPasswordVisible ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.muted} />
+                          </Pressable>
+                        </View>
                       </View>
-                    </View>
+                    )}
 
                     {error.length > 0 && <Text style={styles.signUpError} accessibilityRole="alert">{error}</Text>}
 
                     <Pressable
-                      onPress={handleCreateAccount}
+                      onPress={handleSubmit}
                       style={({ pressed }) => [styles.signUpSubmit, pressed && styles.primaryButtonPressed]}
                       accessibilityRole="button"
                     >
-                      <Text style={styles.signUpSubmitText}>Create account</Text>
+                      <Text style={styles.signUpSubmitText}>{isLoginMode ? 'Log in' : 'Create account'}</Text>
                       <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
                     </Pressable>
                   </View>
@@ -1501,11 +1542,21 @@ function SignUpScreen({
                   <View style={styles.signUpPrivacyNote}>
                     <Ionicons name="lock-closed-outline" size={15} color={COLORS.brand} />
                     <Text style={styles.signUpPrivacyText}>
-                      Sign-up is a preview: no account service is connected. Your password is not sent or saved.
+                      {isLoginMode
+                        ? 'Login is a preview: no account service checks your credentials. They are not sent or saved.'
+                        : 'Sign-up is a preview: no account service is connected. Your password is not sent or saved.'}
                     </Text>
                   </View>
+                  <Pressable onPress={switchMode} style={styles.signUpModeSwitch} accessibilityRole="button">
+                    <Text style={styles.signUpModeSwitchText}>
+                      {isLoginMode ? 'New to Daybook? ' : 'Already have an account? '}
+                      <Text style={styles.signUpModeLink}>{isLoginMode ? 'Sign up' : 'Log in'}</Text>
+                    </Text>
+                  </Pressable>
                   <Pressable onPress={onClose} style={styles.signUpSkip} accessibilityRole="button">
-                    <Text style={styles.signUpSkipText}>Keep using Daybook on this device</Text>
+                    <Text style={styles.signUpSkipText}>
+                      {isLoginMode ? 'Continue without logging in' : 'Keep using Daybook on this device'}
+                    </Text>
                   </Pressable>
                 </>
               ) : (
@@ -1513,10 +1564,14 @@ function SignUpScreen({
                   <View style={styles.signUpSuccessIcon}>
                     <Ionicons name="checkmark" size={26} color={COLORS.card} />
                   </View>
-                  <TinyLabel>READY WHEN YOU ARE</TinyLabel>
-                  <Text style={styles.signUpSuccessTitle}>Your profile is ready, {firstName}.</Text>
+                  <TinyLabel>{isLoginMode ? 'LOCAL SIGN-IN PREVIEW' : 'READY WHEN YOU ARE'}</TinyLabel>
+                  <Text style={styles.signUpSuccessTitle}>
+                    {isLoginMode ? `Welcome back, ${firstName}.` : `Your profile is ready, ${firstName}.`}
+                  </Text>
                   <Text style={styles.signUpSuccessBody}>
-                    This is a sign-up preview. Your email and password were not sent or saved; Daybook still keeps your plans on this device.
+                    {isLoginMode
+                      ? 'No account service checked these details. Your credentials were not sent or saved; your plans remain on this device.'
+                      : 'This is a sign-up preview. Your email and password were not sent or saved; Daybook still keeps your plans on this device.'}
                   </Text>
                   <Pressable
                     onPress={() => onComplete(submittedName)}
@@ -1735,6 +1790,9 @@ const styles = StyleSheet.create({
   signUpCardSubtitle: { color: COLORS.muted, fontFamily: FONT.medium, fontSize: 12, marginTop: 3, marginBottom: 2 },
   signUpField: { marginTop: 13 },
   signUpLabel: { color: COLORS.ink, fontFamily: FONT.semibold, fontSize: 12, marginBottom: 6 },
+  signUpLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  signUpLabelInRow: { marginBottom: 0 },
+  signUpForgotLink: { color: COLORS.brand, fontFamily: FONT.semibold, fontSize: 11 },
   signUpInputWrap: { minHeight: 47, flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#FFFEFD', borderWidth: 1, borderColor: COLORS.line, borderRadius: 12, paddingHorizontal: 11 },
   signUpInput: { flex: 1, minWidth: 0, height: 45, color: COLORS.ink, fontFamily: FONT.medium, fontSize: 13, padding: 0, outlineStyle: 'none' as never },
   signUpError: { color: COLORS.danger, fontFamily: FONT.medium, fontSize: 12, marginTop: 11 },
@@ -1742,6 +1800,9 @@ const styles = StyleSheet.create({
   signUpSubmitText: { color: COLORS.card, fontFamily: FONT.semibold, fontSize: 14 },
   signUpPrivacyNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: '#F1E9E5', borderRadius: 13, paddingHorizontal: 12, paddingVertical: 11, marginTop: 13 },
   signUpPrivacyText: { flex: 1, color: COLORS.muted, fontFamily: FONT.medium, fontSize: 11, lineHeight: 16 },
+  signUpModeSwitch: { alignItems: 'center', justifyContent: 'center', minHeight: 34, marginTop: 5 },
+  signUpModeSwitchText: { color: COLORS.muted, fontFamily: FONT.medium, fontSize: 12 },
+  signUpModeLink: { color: COLORS.brand, fontFamily: FONT.semibold },
   signUpSkip: { alignItems: 'center', justifyContent: 'center', minHeight: 38, marginTop: 7 },
   signUpSkipText: { color: COLORS.brand, fontFamily: FONT.semibold, fontSize: 12 },
   signUpSuccessCard: { alignItems: 'center', backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.line, borderRadius: 22, padding: 22 },
