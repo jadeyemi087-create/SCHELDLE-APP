@@ -1302,11 +1302,13 @@ function AccountAccessScreen({
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [error, setError] = useState('');
+  const [providerNotice, setProviderNotice] = useState('');
   const [submittedName, setSubmittedName] = useState('');
   const [mode, setMode] = useState<'signup' | 'login'>('signup');
   const isLoginMode = mode === 'login';
 
   const handleSubmit = () => {
+    setProviderNotice('');
     const name = fullName.trim();
     const normalizedEmail = email.trim();
     const emailParts = normalizedEmail.split('@');
@@ -1353,11 +1355,18 @@ function AccountAccessScreen({
   const switchMode = () => {
     setMode((current) => current === 'signup' ? 'login' : 'signup');
     setError('');
+    setProviderNotice('');
     setSubmittedName('');
     setPassword('');
     setConfirmPassword('');
     setPasswordVisible(false);
     setConfirmPasswordVisible(false);
+  };
+
+  const handleProviderSignIn = (provider: 'Google' | 'Apple') => {
+    Keyboard.dismiss();
+    setError('');
+    setProviderNotice(`${provider} sign-in isn’t configured yet. Connect its OAuth provider to enable it.`);
   };
 
   const firstName = submittedName.trim().split(' ').filter(Boolean)[0] ?? '';
@@ -1537,14 +1546,43 @@ function AccountAccessScreen({
                       <Text style={styles.signUpSubmitText}>{isLoginMode ? 'Log in' : 'Create account'}</Text>
                       <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
                     </Pressable>
+
+                    <View style={styles.socialDivider}>
+                      <View style={styles.socialDividerLine} />
+                      <Text style={styles.socialDividerText}>OR CONTINUE WITH</Text>
+                      <View style={styles.socialDividerLine} />
+                    </View>
+                    <View style={styles.socialProviderRow}>
+                      <Pressable
+                        onPress={() => handleProviderSignIn('Google')}
+                        style={({ pressed }) => [styles.socialProviderButton, pressed && styles.pressed]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Continue with Google to ${isLoginMode ? 'log in' : 'sign up'}`}
+                      >
+                        <Ionicons name="logo-google" size={18} color="#4285F4" />
+                        <Text style={styles.socialProviderText}>Google</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => handleProviderSignIn('Apple')}
+                        style={({ pressed }) => [styles.socialProviderButton, styles.appleProviderButton, pressed && styles.pressed]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Continue with Apple to ${isLoginMode ? 'log in' : 'sign up'}`}
+                      >
+                        <Ionicons name="logo-apple" size={18} color={COLORS.card} />
+                        <Text style={[styles.socialProviderText, styles.appleProviderText]}>Apple</Text>
+                      </Pressable>
+                    </View>
+                    {providerNotice.length > 0 && (
+                      <Text style={styles.socialProviderNotice} accessibilityRole="alert">{providerNotice}</Text>
+                    )}
                   </View>
 
                   <View style={styles.signUpPrivacyNote}>
                     <Ionicons name="lock-closed-outline" size={15} color={COLORS.brand} />
                     <Text style={styles.signUpPrivacyText}>
                       {isLoginMode
-                        ? 'Login is a preview: no account service checks your credentials. They are not sent or saved.'
-                        : 'Sign-up is a preview: no account service is connected. Your password is not sent or saved.'}
+                        ? 'Login is a preview: credentials aren’t checked or saved, and Google/Apple need OAuth setup.'
+                        : 'Sign-up is a preview: passwords aren’t sent or saved, and Google/Apple need OAuth setup.'}
                     </Text>
                   </View>
                   <Pressable onPress={switchMode} style={styles.signUpModeSwitch} accessibilityRole="button">
@@ -1798,6 +1836,15 @@ const styles = StyleSheet.create({
   signUpError: { color: COLORS.danger, fontFamily: FONT.medium, fontSize: 12, marginTop: 11 },
   signUpSubmit: { width: '100%', minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.brand, borderRadius: 25, marginTop: 16, paddingHorizontal: 16 },
   signUpSubmitText: { color: COLORS.card, fontFamily: FONT.semibold, fontSize: 14 },
+  socialDivider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 15 },
+  socialDividerLine: { flex: 1, height: 1, backgroundColor: COLORS.line },
+  socialDividerText: { color: COLORS.muted, fontFamily: FONT.bold, fontSize: 9, letterSpacing: 0.8 },
+  socialProviderRow: { flexDirection: 'row', gap: 9, marginTop: 10 },
+  socialProviderButton: { flex: 1, minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.card, borderWidth: 1, borderColor: COLORS.line, borderRadius: 13 },
+  appleProviderButton: { backgroundColor: '#1F1F22', borderColor: '#1F1F22' },
+  socialProviderText: { color: COLORS.ink, fontFamily: FONT.semibold, fontSize: 12 },
+  appleProviderText: { color: COLORS.card },
+  socialProviderNotice: { color: COLORS.muted, fontFamily: FONT.medium, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 10 },
   signUpPrivacyNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: '#F1E9E5', borderRadius: 13, paddingHorizontal: 12, paddingVertical: 11, marginTop: 13 },
   signUpPrivacyText: { flex: 1, color: COLORS.muted, fontFamily: FONT.medium, fontSize: 11, lineHeight: 16 },
   signUpModeSwitch: { alignItems: 'center', justifyContent: 'center', minHeight: 34, marginTop: 5 },

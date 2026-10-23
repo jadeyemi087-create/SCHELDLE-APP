@@ -18,7 +18,7 @@ Scan the Expo Go QR code to try the native app on a device. Local reminders and 
 ## What’s included
 
 - Day timeline with a quick-add/edit flow, an optional 15-minute time dropdown, duration, and task categories.
-- A task preview before saving, plus validated sign-up and log-in screen prototypes reachable from the app header.
+- A task preview before saving, plus sign-up/log-in screen prototypes with Google and Apple sign-in buttons.
 - Week overview and date navigation.
 - One-time, daily, weekly, and chosen-weekday recurrence.
 - Local reminders with notification actions to mark a task done or snooze it for ten minutes.
@@ -28,4 +28,4 @@ Scan the Expo Go QR code to try the native app on a device. Local reminders and 
 
 ## Storage and privacy
 
-There is no authentication service or backend. The sign-up and log-in screens are validated UI prototypes only: credentials are neither sent nor persisted, and the temporary profile name lasts only for the current app session. iOS and Android persist task state in a SQLite-backed store (`expo-sqlite/kv-store`); the web preview uses `localStorage`. Tasks stay on this device and are not synced or shared.
+There is no authentication service or backend. The sign-up/log-in forms and Google/Apple buttons are UI prototypes only: credentials are neither sent nor persisted, and OAuth is not configured. The temporary profile name lasts only for the current app session. iOS and Android persist task state in a SQLite-backed store (`expo-sqlite/kv-store`); the web preview uses `localStorage`. Tasks stay on this device and are not synced or shared.
