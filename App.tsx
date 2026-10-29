@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   PanResponder,
   Platform,
@@ -51,6 +52,9 @@ import {
   type ReminderAction,
 } from './src/reminders';
 import { loadDaybookState, saveDaybookState } from './src/storage';
+import { type User } from '@supabase/supabase-js';
+import { getAuthRedirectUrl, handleAuthRedirect, signInWithOAuthProvider } from './src/auth';
+import { isSupabaseConfigured, supabase } from './src/supabase';
 import { EMPTY_STATE, type Category, type DaybookState, type DaybookTask, type Recurrence, type TaskInstance } from './src/types';
 
 const COLORS = {
@@ -165,6 +169,10 @@ function TinyLabel({ children, style }: { children: React.ReactNode; style?: obj
   return <Text style={[styles.tinyLabel, style]}>{children}</Text>;
 }
 
+function authErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Authentication failed. Please try again.';
+}
+
 function AppContent() {
   const [fontsLoaded, fontError] = useFonts({
     Urbanist_400Regular,
@@ -185,7 +193,9 @@ function AppContent() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [notice, setNotice] = useState('');
   const [accountAccessVisible, setAccountAccessVisible] = useState(false);
-  const [profileName, setProfileName] = useState('');
+  const [accountAccessMode, setAccountAccessMode] = useState<'signup' | 'login'>('signup');
+  const [passwordRecoveryVisible, setPasswordRecoveryVisible] = useState(false);
+  const [authUser, setAuthUser] = useState<User | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionHandlerRef = useRef<(action: ReminderAction) => void>(() => undefined);
 
@@ -200,6 +210,80 @@ function AppContent() {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
     noticeTimer.current = setTimeout(() => setNotice(''), 2800);
   }, []);
+
+  const profileName = useMemo(() => {
+    const metadataName = authUser?.user_metadata?.full_name;
+    if (typeof metadataName === 'string' && metadataName.trim()) return metadataName.trim();
+    return authUser?.email?.split('@')[0] ?? '';
+  }, [authUser]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let mounted = true;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      setAuthUser(session?.user ?? null);
+      if (event === 'PASSWORD_RECOVERY') {
+        setAccountAccessVisible(false);
+        setPasswordRecoveryVisible(true);
+      } else if (event === 'SIGNED_IN') {
+        setAccountAccessVisible(false);
+        setPasswordRecoveryVisible(false);
+        showNotice('Signed in. Your task data remains on this device.');
+      } else if (event === 'SIGNED_OUT') {
+        setPasswordRecoveryVisible(false);
+        showNotice('Signed out. Your local tasks are still here.');
+      }
+    });
+
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!mounted) return;
+      if (error) console.warn('Could not restore the Supabase session.', error);
+      setAuthUser(data.session?.user ?? null);
+    }).catch((error) => console.warn('Could not restore the Supabase session.', error));
+
+    const completeRedirect = async (url: string) => {
+      const isPasswordRecovery = await handleAuthRedirect(url);
+      if (isPasswordRecovery) {
+        setAccountAccessVisible(false);
+        setPasswordRecoveryVisible(true);
+      }
+    };
+    const handleUrl = ({ url }: { url: string }) => {
+      void completeRedirect(url).catch((error) => {
+        console.warn('Could not complete the Supabase sign-in link.', error);
+        showNotice(`Could not complete sign-in: ${authErrorMessage(error)}`);
+      });
+    };
+    const linkSubscription = Linking.addEventListener('url', handleUrl);
+    void Linking.getInitialURL().then((url) => {
+      if (url) return completeRedirect(url);
+    }).catch((error) => {
+      console.warn('Could not read the initial sign-in link.', error);
+      showNotice(`Could not complete sign-in: ${authErrorMessage(error)}`);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+      linkSubscription.remove();
+    };
+  }, [showNotice]);
+
+  const handleAccountButton = useCallback(async () => {
+    if (authUser && supabase) {
+      try {
+        const { error } = await supabase.auth.signOut();
+        if (error) showNotice(error.message);
+      } catch (error) {
+        showNotice(authErrorMessage(error));
+      }
+      return;
+    }
+    setAccountAccessMode('signup');
+    setAccountAccessVisible(true);
+  }, [authUser, showNotice]);
 
   useEffect(() => {
     let mounted = true;
@@ -758,15 +842,24 @@ function AppContent() {
     );
   }
 
+  if (passwordRecoveryVisible) {
+    return (
+      <PasswordUpdateScreen
+        onClose={() => setPasswordRecoveryVisible(false)}
+        onComplete={() => {
+          setPasswordRecoveryVisible(false);
+          showNotice('Your password has been updated.');
+        }}
+      />
+    );
+  }
+
   if (accountAccessVisible) {
     return (
       <AccountAccessScreen
+        initialMode={accountAccessMode}
         onClose={() => setAccountAccessVisible(false)}
-        onComplete={(name) => {
-          setProfileName(name);
-          setAccountAccessVisible(false);
-          showNotice(`Welcome, ${name.trim().split(' ').filter(Boolean)[0]}. Keep planning at your own pace.`);
-        }}
+        onComplete={() => setAccountAccessVisible(false)}
       />
     );
   }
@@ -795,14 +888,14 @@ function AppContent() {
                   <Text style={styles.localBadgeText}>ON DEVICE</Text>
                 </View>
                 <Pressable
-                  onPress={() => setAccountAccessVisible(true)}
+                  onPress={() => void handleAccountButton()}
                   style={({ pressed }) => [styles.signUpHeaderButton, pressed && styles.pressed]}
                   accessibilityRole="button"
-                  accessibilityLabel={profileName ? `Profile for ${profileName}` : 'Sign up'}
+                  accessibilityLabel={authUser ? `Sign out ${profileName}` : 'Sign up or log in'}
                 >
-                  <Ionicons name={profileName ? 'person-circle-outline' : 'person-add-outline'} size={15} color={COLORS.brand} />
+                  <Ionicons name={authUser ? 'log-out-outline' : 'person-add-outline'} size={15} color={COLORS.brand} />
                   <Text style={styles.signUpHeaderText} numberOfLines={1}>
-                    {profileName ? profileName.split(' ').filter(Boolean)[0] : 'Sign up'}
+                    {authUser ? profileName.split(' ').filter(Boolean)[0] || 'Sign out' : 'Sign up'}
                   </Text>
                 </Pressable>
               </View>
@@ -1291,12 +1384,14 @@ function TaskEditor({
 function EmailVerificationStep({
   email,
   notice,
+  busy,
   onResend,
   onBack,
   onContinue,
 }: {
   email: string;
   notice: string;
+  busy: boolean;
   onResend: () => void;
   onBack: () => void;
   onContinue: () => void;
@@ -1309,22 +1404,29 @@ function EmailVerificationStep({
       <TinyLabel>EMAIL VERIFICATION</TinyLabel>
       <Text style={styles.signUpSuccessTitle}>Verify your email</Text>
       <Text style={styles.signUpSuccessBody}>
-        A verification link would be sent to {email}. Email delivery isn’t connected in this prototype, so nothing was sent and this address is not verified.
+        We sent a confirmation link to {email}. Open it to verify your email and finish creating your account.
       </Text>
       {notice.length > 0 && <Text style={styles.socialProviderNotice} accessibilityRole="alert">{notice}</Text>}
-      <Pressable onPress={onResend} style={styles.authSecondaryButton} accessibilityRole="button">
+      <Pressable onPress={onResend} disabled={busy} style={styles.authSecondaryButton} accessibilityRole="button">
         <Text style={styles.authSecondaryText}>Resend verification email</Text>
       </Pressable>
-      <Pressable onPress={onBack} style={styles.authSecondaryButton} accessibilityRole="button">
+      <Pressable onPress={onBack} disabled={busy} style={styles.authSecondaryButton} accessibilityRole="button">
         <Text style={styles.authSecondaryText}>Back to sign up</Text>
       </Pressable>
       <Pressable
         onPress={onContinue}
-        style={({ pressed }) => [styles.signUpSubmit, pressed && styles.primaryButtonPressed]}
+        disabled={busy}
+        style={({ pressed }) => [styles.signUpSubmit, pressed && !busy && styles.primaryButtonPressed]}
         accessibilityRole="button"
       >
-        <Text style={styles.signUpSubmitText}>Continue without an account</Text>
-        <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
+        {busy ? (
+          <ActivityIndicator color={COLORS.card} />
+        ) : (
+          <>
+            <Text style={styles.signUpSubmitText}>I’ve verified my email</Text>
+            <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
+          </>
+        )}
       </Pressable>
     </View>
   );
@@ -1347,7 +1449,7 @@ function PasswordResetStep({
       <TinyLabel>PASSWORD RECOVERY</TinyLabel>
       <Text style={styles.signUpSuccessTitle}>Reset your password</Text>
       <Text style={styles.signUpSuccessBody}>
-        No reset email was sent to {email}. Password recovery needs an authentication and email service, which isn’t connected in this prototype.
+        If an account exists for {email}, a password reset link is on its way. Open the link to choose a new password.
       </Text>
       <Pressable
         onPress={onBack}
@@ -1364,12 +1466,187 @@ function PasswordResetStep({
   );
 }
 
-function AccountAccessScreen({
+function PasswordUpdateScreen({
   onClose,
   onComplete,
 }: {
   onClose: () => void;
-  onComplete: (name: string) => void;
+  onComplete: () => void;
+}) {
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const updatePassword = async () => {
+    if (busy) return;
+    setError('');
+    if (password.length < 8) {
+      setError('Use a password with at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Those passwords don’t match yet.');
+      return;
+    }
+    if (!supabase) {
+      setError('Add your Supabase project URL and anon key to .env.local first.');
+      return;
+    }
+
+    Keyboard.dismiss();
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      onComplete();
+    } catch (error) {
+      setError(authErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View style={styles.outerShell}>
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={styles.signUpSafeArea} edges={['top', 'bottom']}>
+        <View style={styles.signUpFrame}>
+          <KeyboardAvoidingView
+            style={styles.signUpKeyboard}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <ScrollView
+              contentContainerStyle={styles.signUpContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.signUpHeader}>
+                <View style={styles.brandLockup}>
+                  <View style={styles.brandMark}>
+                    <Ionicons name="checkmark" size={17} color={COLORS.card} />
+                  </View>
+                  <Text style={styles.brandName}>daybook</Text>
+                </View>
+                <Pressable
+                  onPress={onClose}
+                  disabled={busy}
+                  style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back to Daybook"
+                >
+                  <Ionicons name="close" size={21} color={COLORS.ink} />
+                </Pressable>
+              </View>
+
+              <View style={styles.signUpHero}>
+                <View style={styles.signUpHeroIcon}>
+                  <Ionicons name="key-outline" size={23} color={COLORS.brand} />
+                </View>
+                <TinyLabel>ACCOUNT RECOVERY</TinyLabel>
+                <Text style={styles.signUpTitle}>Choose a new password.</Text>
+                <Text style={styles.signUpSubtitle}>Use at least 8 characters, then confirm it below.</Text>
+              </View>
+
+              <View style={styles.signUpCard}>
+                <Text style={styles.signUpCardTitle}>Set a new password</Text>
+                <Text style={styles.signUpCardSubtitle}>This updates the password for your Daybook account.</Text>
+                <View style={styles.signUpField}>
+                  <Text style={styles.signUpLabel}>New password</Text>
+                  <View style={styles.signUpInputWrap}>
+                    <Ionicons name="lock-closed-outline" size={17} color={COLORS.muted} />
+                    <TextInput
+                      value={password}
+                      onChangeText={setPassword}
+                      style={styles.signUpInput}
+                      placeholder="At least 8 characters"
+                      placeholderTextColor="#9A9291"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="new-password"
+                      secureTextEntry={!passwordVisible}
+                      returnKeyType="next"
+                      maxLength={128}
+                      accessibilityLabel="New password"
+                    />
+                    <Pressable
+                      onPress={() => setPasswordVisible((current) => !current)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'}
+                    >
+                      <Ionicons name={passwordVisible ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.muted} />
+                    </Pressable>
+                  </View>
+                </View>
+                <View style={styles.signUpField}>
+                  <Text style={styles.signUpLabel}>Confirm new password</Text>
+                  <View style={styles.signUpInputWrap}>
+                    <Ionicons name="shield-checkmark-outline" size={17} color={COLORS.muted} />
+                    <TextInput
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                      style={styles.signUpInput}
+                      placeholder="Type it again"
+                      placeholderTextColor="#9A9291"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      autoComplete="new-password"
+                      secureTextEntry={!confirmPasswordVisible}
+                      returnKeyType="done"
+                      maxLength={128}
+                      onSubmitEditing={updatePassword}
+                      accessibilityLabel="Confirm new password"
+                    />
+                    <Pressable
+                      onPress={() => setConfirmPasswordVisible((current) => !current)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={confirmPasswordVisible ? 'Hide confirm password' : 'Show confirm password'}
+                    >
+                      <Ionicons name={confirmPasswordVisible ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.muted} />
+                    </Pressable>
+                  </View>
+                </View>
+                {error.length > 0 && <Text style={styles.signUpError} accessibilityRole="alert">{error}</Text>}
+                <Pressable
+                  onPress={updatePassword}
+                  disabled={busy}
+                  style={({ pressed }) => [styles.signUpSubmit, pressed && !busy && styles.primaryButtonPressed]}
+                  accessibilityRole="button"
+                >
+                  {busy ? (
+                    <ActivityIndicator color={COLORS.card} />
+                  ) : (
+                    <>
+                      <Text style={styles.signUpSubmitText}>Save new password</Text>
+                      <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
+                    </>
+                  )}
+                </Pressable>
+              </View>
+              <View style={styles.signUpPrivacyNote}>
+                <Ionicons name="lock-closed-outline" size={15} color={COLORS.brand} />
+                <Text style={styles.signUpPrivacyText}>Your Daybook tasks stay saved on this device; only your account password is updated.</Text>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+function AccountAccessScreen({
+  initialMode,
+  onClose,
+  onComplete,
+}: {
+  initialMode: 'signup' | 'login';
+  onClose: () => void;
+  onComplete: () => void;
 }) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -1379,15 +1656,17 @@ function AccountAccessScreen({
   const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
   const [error, setError] = useState('');
   const [providerNotice, setProviderNotice] = useState('');
-  const [submittedName, setSubmittedName] = useState('');
+  const [busy, setBusy] = useState(false);
   const [verificationRequest, setVerificationRequest] = useState<{ email: string; name: string } | null>(null);
   const [resetRequestedEmail, setResetRequestedEmail] = useState('');
-  const [mode, setMode] = useState<'signup' | 'login' | 'forgot'>('signup');
+  const [mode, setMode] = useState<'signup' | 'login' | 'forgot'>(initialMode);
   const isLoginMode = mode === 'login';
   const isForgotMode = mode === 'forgot';
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (busy) return;
     setProviderNotice('');
+    setError('');
     const name = fullName.trim();
     const normalizedEmail = email.trim();
     const emailParts = normalizedEmail.split('@');
@@ -1404,10 +1683,24 @@ function AccountAccessScreen({
     }
 
     if (isForgotMode) {
+      if (!supabase) {
+        setError('Add your Supabase project URL and anon key to .env.local first.');
+        return;
+      }
       Keyboard.dismiss();
-      setError('');
-      setResetRequestedEmail(normalizedEmail);
-      setEmail(normalizedEmail);
+      setBusy(true);
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+          redirectTo: getAuthRedirectUrl(),
+        });
+        if (error) throw error;
+        setResetRequestedEmail(normalizedEmail);
+        setEmail(normalizedEmail);
+      } catch (error) {
+        setError(authErrorMessage(error));
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 
@@ -1431,17 +1724,44 @@ function AccountAccessScreen({
       }
     }
 
+    if (!supabase) {
+      setError('Add your Supabase project URL and anon key to .env.local first.');
+      return;
+    }
+
     Keyboard.dismiss();
-    setError('');
-    setPassword('');
-    setConfirmPassword('');
-    if (isLoginMode) {
-      const loginName = normalizedEmail.split('@')[0] || 'Daybook';
-      setSubmittedName(loginName);
-      setEmail('');
-    } else {
-      setVerificationRequest({ email: normalizedEmail, name });
-      setEmail(normalizedEmail);
+    setBusy(true);
+    try {
+      if (isLoginMode) {
+        const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+        if (error) throw error;
+        setEmail('');
+        setPassword('');
+        onComplete();
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password,
+          options: {
+            data: { full_name: name },
+            emailRedirectTo: getAuthRedirectUrl(),
+          },
+        });
+        if (error) throw error;
+        setPassword('');
+        setConfirmPassword('');
+        setEmail(normalizedEmail);
+        if (data.session) {
+          onComplete();
+        } else {
+          setVerificationRequest({ email: normalizedEmail, name });
+          setProviderNotice('A confirmation link has been sent to your email.');
+        }
+      }
+    } catch (error) {
+      setError(authErrorMessage(error));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -1449,7 +1769,6 @@ function AccountAccessScreen({
     setMode((current) => current === 'signup' ? 'login' : 'signup');
     setError('');
     setProviderNotice('');
-    setSubmittedName('');
     setVerificationRequest(null);
     setResetRequestedEmail('');
     setPassword('');
@@ -1476,13 +1795,60 @@ function AccountAccessScreen({
     setResetRequestedEmail('');
   };
 
-  const handleProviderSignIn = (provider: 'Google' | 'Apple') => {
-    Keyboard.dismiss();
-    setError('');
-    setProviderNotice(`${provider} sign-in isn’t configured yet. Connect its OAuth provider to enable it.`);
+  const resendVerificationEmail = async () => {
+    if (!supabase || !verificationRequest) return;
+    setBusy(true);
+    setProviderNotice('');
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: verificationRequest.email,
+        options: { emailRedirectTo: getAuthRedirectUrl() },
+      });
+      if (error) throw error;
+      setProviderNotice('A new confirmation link has been sent.');
+    } catch (error) {
+      setProviderNotice(authErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const firstName = submittedName.trim().split(' ').filter(Boolean)[0] ?? '';
+  const checkEmailVerification = async () => {
+    if (!supabase || !verificationRequest) return;
+    setBusy(true);
+    setProviderNotice('');
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) throw error;
+      if (!data.session) {
+        setProviderNotice('The email is not verified yet. Open the confirmation link, then try again.');
+        return;
+      }
+      onComplete();
+    } catch (error) {
+      setProviderNotice(authErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleProviderSignIn = async (provider: 'Google' | 'Apple') => {
+    Keyboard.dismiss();
+    setError('');
+    if (!supabase) {
+      setError('Add your Supabase project URL and anon key to .env.local first.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await signInWithOAuthProvider(provider === 'Google' ? 'google' : 'apple');
+    } catch (error) {
+      setError(authErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <View style={styles.outerShell}>
@@ -1519,12 +1885,13 @@ function AccountAccessScreen({
                 <EmailVerificationStep
                   email={verificationRequest.email}
                   notice={providerNotice}
-                  onResend={() => setProviderNotice('Email verification isn’t configured yet; no email was sent.')}
+                  busy={busy}
+                  onResend={resendVerificationEmail}
                   onBack={() => {
                     setVerificationRequest(null);
                     setProviderNotice('');
                   }}
-                  onContinue={onClose}
+                  onContinue={checkEmailVerification}
                 />
               ) : resetRequestedEmail ? (
                 <PasswordResetStep
@@ -1532,7 +1899,7 @@ function AccountAccessScreen({
                   onBack={returnToLogin}
                   onTryAnother={() => setResetRequestedEmail('')}
                 />
-              ) : !submittedName ? (
+              ) : (
                 <>
                   <View style={styles.signUpHero}>
                     <View style={styles.signUpHeroIcon}>
@@ -1676,13 +2043,20 @@ function AccountAccessScreen({
 
                     <Pressable
                       onPress={handleSubmit}
-                      style={({ pressed }) => [styles.signUpSubmit, pressed && styles.primaryButtonPressed]}
+                      disabled={busy}
+                      style={({ pressed }) => [styles.signUpSubmit, pressed && !busy && styles.primaryButtonPressed]}
                       accessibilityRole="button"
                     >
-                      <Text style={styles.signUpSubmitText}>
-                        {isLoginMode ? 'Log in' : isForgotMode ? 'Send reset link' : 'Create account'}
-                      </Text>
-                      <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
+                      {busy ? (
+                        <ActivityIndicator color={COLORS.card} />
+                      ) : (
+                        <>
+                          <Text style={styles.signUpSubmitText}>
+                            {isLoginMode ? 'Log in' : isForgotMode ? 'Send reset link' : 'Create account'}
+                          </Text>
+                          <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
+                        </>
+                      )}
                     </Pressable>
 
                     {!isForgotMode && (
@@ -1695,7 +2069,8 @@ function AccountAccessScreen({
                         <View style={styles.socialProviderRow}>
                           <Pressable
                             onPress={() => handleProviderSignIn('Google')}
-                            style={({ pressed }) => [styles.socialProviderButton, pressed && styles.pressed]}
+                            disabled={busy}
+                            style={({ pressed }) => [styles.socialProviderButton, pressed && !busy && styles.pressed]}
                             accessibilityRole="button"
                             accessibilityLabel={`Continue with Google to ${isLoginMode ? 'log in' : 'sign up'}`}
                           >
@@ -1704,7 +2079,8 @@ function AccountAccessScreen({
                           </Pressable>
                           <Pressable
                             onPress={() => handleProviderSignIn('Apple')}
-                            style={({ pressed }) => [styles.socialProviderButton, styles.appleProviderButton, pressed && styles.pressed]}
+                            disabled={busy}
+                            style={({ pressed }) => [styles.socialProviderButton, styles.appleProviderButton, pressed && !busy && styles.pressed]}
                             accessibilityRole="button"
                             accessibilityLabel={`Continue with Apple to ${isLoginMode ? 'log in' : 'sign up'}`}
                           >
@@ -1722,11 +2098,13 @@ function AccountAccessScreen({
                   <View style={styles.signUpPrivacyNote}>
                     <Ionicons name="lock-closed-outline" size={15} color={COLORS.brand} />
                     <Text style={styles.signUpPrivacyText}>
-                      {isLoginMode
-                        ? 'Login is a preview: credentials aren’t checked or saved, and Google/Apple need OAuth setup.'
-                        : isForgotMode
-                          ? 'Password reset emails can’t be sent until an authentication service is connected.'
-                          : 'Sign-up is a preview: passwords and verification emails aren’t sent or saved; Google/Apple need OAuth setup.'}
+                      {!isSupabaseConfigured
+                        ? 'Authentication is not configured yet. Add the public Supabase values from .env.example to .env.local; your plans remain on this device.'
+                        : isLoginMode
+                          ? 'Secure email/password sign-in is provided by Supabase. Your planner data stays stored on this device.'
+                          : isForgotMode
+                            ? 'If an account exists, Supabase will email a password reset link. Planner data stays local.'
+                            : 'Supabase will send an email confirmation. Enable Google and Apple in its Auth provider settings to use those options.'}
                     </Text>
                   </View>
                   <Pressable
@@ -1755,29 +2133,6 @@ function AccountAccessScreen({
                     </Text>
                   </Pressable>
                 </>
-              ) : (
-                <View style={styles.signUpSuccessCard}>
-                  <View style={styles.signUpSuccessIcon}>
-                    <Ionicons name="checkmark" size={26} color={COLORS.card} />
-                  </View>
-                  <TinyLabel>{isLoginMode ? 'LOCAL SIGN-IN PREVIEW' : 'READY WHEN YOU ARE'}</TinyLabel>
-                  <Text style={styles.signUpSuccessTitle}>
-                    {isLoginMode ? `Welcome back, ${firstName}.` : `Your profile is ready, ${firstName}.`}
-                  </Text>
-                  <Text style={styles.signUpSuccessBody}>
-                    {isLoginMode
-                      ? 'No account service checked these details. Your credentials were not sent or saved; your plans remain on this device.'
-                      : 'This is a sign-up preview. Your email and password were not sent or saved; Daybook still keeps your plans on this device.'}
-                  </Text>
-                  <Pressable
-                    onPress={() => onComplete(submittedName)}
-                    style={({ pressed }) => [styles.signUpSubmit, pressed && styles.primaryButtonPressed]}
-                    accessibilityRole="button"
-                  >
-                    <Text style={styles.signUpSubmitText}>Continue to Daybook</Text>
-                    <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
-                  </Pressable>
-                </View>
               )}
             </ScrollView>
           </KeyboardAvoidingView>
