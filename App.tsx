@@ -1288,6 +1288,82 @@ function TaskEditor({
   );
 }
 
+function EmailVerificationStep({
+  email,
+  notice,
+  onResend,
+  onBack,
+  onContinue,
+}: {
+  email: string;
+  notice: string;
+  onResend: () => void;
+  onBack: () => void;
+  onContinue: () => void;
+}) {
+  return (
+    <View style={styles.signUpSuccessCard}>
+      <View style={styles.signUpSuccessIcon}>
+        <Ionicons name="mail-open-outline" size={25} color={COLORS.card} />
+      </View>
+      <TinyLabel>EMAIL VERIFICATION</TinyLabel>
+      <Text style={styles.signUpSuccessTitle}>Verify your email</Text>
+      <Text style={styles.signUpSuccessBody}>
+        A verification link would be sent to {email}. Email delivery isn’t connected in this prototype, so nothing was sent and this address is not verified.
+      </Text>
+      {notice.length > 0 && <Text style={styles.socialProviderNotice} accessibilityRole="alert">{notice}</Text>}
+      <Pressable onPress={onResend} style={styles.authSecondaryButton} accessibilityRole="button">
+        <Text style={styles.authSecondaryText}>Resend verification email</Text>
+      </Pressable>
+      <Pressable onPress={onBack} style={styles.authSecondaryButton} accessibilityRole="button">
+        <Text style={styles.authSecondaryText}>Back to sign up</Text>
+      </Pressable>
+      <Pressable
+        onPress={onContinue}
+        style={({ pressed }) => [styles.signUpSubmit, pressed && styles.primaryButtonPressed]}
+        accessibilityRole="button"
+      >
+        <Text style={styles.signUpSubmitText}>Continue without an account</Text>
+        <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
+      </Pressable>
+    </View>
+  );
+}
+
+function PasswordResetStep({
+  email,
+  onBack,
+  onTryAnother,
+}: {
+  email: string;
+  onBack: () => void;
+  onTryAnother: () => void;
+}) {
+  return (
+    <View style={styles.signUpSuccessCard}>
+      <View style={[styles.signUpSuccessIcon, styles.resetStepIcon]}>
+        <Ionicons name="key-outline" size={24} color={COLORS.card} />
+      </View>
+      <TinyLabel>PASSWORD RECOVERY</TinyLabel>
+      <Text style={styles.signUpSuccessTitle}>Reset your password</Text>
+      <Text style={styles.signUpSuccessBody}>
+        No reset email was sent to {email}. Password recovery needs an authentication and email service, which isn’t connected in this prototype.
+      </Text>
+      <Pressable
+        onPress={onBack}
+        style={({ pressed }) => [styles.signUpSubmit, pressed && styles.primaryButtonPressed]}
+        accessibilityRole="button"
+      >
+        <Text style={styles.signUpSubmitText}>Back to log in</Text>
+        <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
+      </Pressable>
+      <Pressable onPress={onTryAnother} style={styles.authSecondaryButton} accessibilityRole="button">
+        <Text style={styles.authSecondaryText}>Try another email</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function AccountAccessScreen({
   onClose,
   onComplete,
@@ -1304,8 +1380,11 @@ function AccountAccessScreen({
   const [error, setError] = useState('');
   const [providerNotice, setProviderNotice] = useState('');
   const [submittedName, setSubmittedName] = useState('');
-  const [mode, setMode] = useState<'signup' | 'login'>('signup');
+  const [verificationRequest, setVerificationRequest] = useState<{ email: string; name: string } | null>(null);
+  const [resetRequestedEmail, setResetRequestedEmail] = useState('');
+  const [mode, setMode] = useState<'signup' | 'login' | 'forgot'>('signup');
   const isLoginMode = mode === 'login';
+  const isForgotMode = mode === 'forgot';
 
   const handleSubmit = () => {
     setProviderNotice('');
@@ -1323,6 +1402,15 @@ function AccountAccessScreen({
       setError('Enter a valid email address.');
       return;
     }
+
+    if (isForgotMode) {
+      Keyboard.dismiss();
+      setError('');
+      setResetRequestedEmail(normalizedEmail);
+      setEmail(normalizedEmail);
+      return;
+    }
+
     if (isLoginMode) {
       if (!password) {
         setError('Enter your password to continue.');
@@ -1345,11 +1433,16 @@ function AccountAccessScreen({
 
     Keyboard.dismiss();
     setError('');
-    const loginName = normalizedEmail.split('@')[0] || 'Daybook';
-    setSubmittedName(isLoginMode ? loginName : name);
-    setEmail('');
     setPassword('');
     setConfirmPassword('');
+    if (isLoginMode) {
+      const loginName = normalizedEmail.split('@')[0] || 'Daybook';
+      setSubmittedName(loginName);
+      setEmail('');
+    } else {
+      setVerificationRequest({ email: normalizedEmail, name });
+      setEmail(normalizedEmail);
+    }
   };
 
   const switchMode = () => {
@@ -1357,10 +1450,30 @@ function AccountAccessScreen({
     setError('');
     setProviderNotice('');
     setSubmittedName('');
+    setVerificationRequest(null);
+    setResetRequestedEmail('');
     setPassword('');
     setConfirmPassword('');
     setPasswordVisible(false);
     setConfirmPasswordVisible(false);
+  };
+
+  const openForgotPassword = () => {
+    setMode('forgot');
+    setError('');
+    setProviderNotice('');
+    setResetRequestedEmail('');
+    setPassword('');
+    setConfirmPassword('');
+    setPasswordVisible(false);
+    setConfirmPasswordVisible(false);
+  };
+
+  const returnToLogin = () => {
+    setMode('login');
+    setError('');
+    setProviderNotice('');
+    setResetRequestedEmail('');
   };
 
   const handleProviderSignIn = (provider: 'Google' | 'Apple') => {
@@ -1402,28 +1515,51 @@ function AccountAccessScreen({
                 </Pressable>
               </View>
 
-              {!submittedName ? (
+              {verificationRequest ? (
+                <EmailVerificationStep
+                  email={verificationRequest.email}
+                  notice={providerNotice}
+                  onResend={() => setProviderNotice('Email verification isn’t configured yet; no email was sent.')}
+                  onBack={() => {
+                    setVerificationRequest(null);
+                    setProviderNotice('');
+                  }}
+                  onContinue={onClose}
+                />
+              ) : resetRequestedEmail ? (
+                <PasswordResetStep
+                  email={resetRequestedEmail}
+                  onBack={returnToLogin}
+                  onTryAnother={() => setResetRequestedEmail('')}
+                />
+              ) : !submittedName ? (
                 <>
                   <View style={styles.signUpHero}>
                     <View style={styles.signUpHeroIcon}>
                       <Ionicons name="sunny-outline" size={23} color={COLORS.brand} />
                     </View>
-                    <TinyLabel>{isLoginMode ? 'WELCOME BACK' : 'MAKE A LITTLE ROOM'}</TinyLabel>
+                    <TinyLabel>{isLoginMode ? 'WELCOME BACK' : isForgotMode ? 'ACCOUNT RECOVERY' : 'MAKE A LITTLE ROOM'}</TinyLabel>
                     <Text style={styles.signUpTitle}>
-                      {isLoginMode ? 'Good to have you back.' : 'Your daybook starts with you.'}
+                      {isLoginMode ? 'Good to have you back.' : isForgotMode ? 'Let’s get you back in.' : 'Your daybook starts with you.'}
                     </Text>
                     <Text style={styles.signUpSubtitle}>
-                      {isLoginMode ? 'Log in to return to your plans and routines.' : 'Create a profile and make space for what matters, one day at a time.'}
+                      {isLoginMode
+                        ? 'Log in to return to your plans and routines.'
+                        : isForgotMode
+                          ? 'Enter the email address on your account to request a reset link.'
+                          : 'Create a profile and make space for what matters, one day at a time.'}
                     </Text>
                   </View>
 
                   <View style={styles.signUpCard}>
-                    <Text style={styles.signUpCardTitle}>{isLoginMode ? 'Log in to Daybook' : 'Create your account'}</Text>
+                    <Text style={styles.signUpCardTitle}>
+                      {isLoginMode ? 'Log in to Daybook' : isForgotMode ? 'Reset your password' : 'Create your account'}
+                    </Text>
                     <Text style={styles.signUpCardSubtitle}>
-                      {isLoginMode ? 'Pick up right where you left off.' : 'A few details to get started.'}
+                      {isLoginMode ? 'Pick up right where you left off.' : isForgotMode ? 'We’ll help you get back to planning.' : 'A few details to get started.'}
                     </Text>
 
-                    {!isLoginMode && (
+                    {!isLoginMode && !isForgotMode && (
                       <View style={styles.signUpField}>
                         <Text style={styles.signUpLabel}>Full name</Text>
                         <View style={styles.signUpInputWrap}>
@@ -1458,53 +1594,53 @@ function AccountAccessScreen({
                           autoCorrect={false}
                           autoComplete="email"
                           keyboardType="email-address"
-                          returnKeyType="next"
+                          returnKeyType={isForgotMode ? 'done' : 'next'}
+                          onSubmitEditing={isForgotMode ? handleSubmit : undefined}
                           accessibilityLabel="Email address"
                         />
                       </View>
                     </View>
 
-                    <View style={styles.signUpField}>
-                      <View style={styles.signUpLabelRow}>
-                        <Text style={[styles.signUpLabel, styles.signUpLabelInRow]}>Password</Text>
-                        {isLoginMode && (
+                    {!isForgotMode && (
+                      <View style={styles.signUpField}>
+                        <View style={styles.signUpLabelRow}>
+                          <Text style={[styles.signUpLabel, styles.signUpLabelInRow]}>Password</Text>
+                          {isLoginMode && (
+                            <Pressable onPress={openForgotPassword} accessibilityRole="button">
+                              <Text style={styles.signUpForgotLink}>Forgot password?</Text>
+                            </Pressable>
+                          )}
+                        </View>
+                        <View style={styles.signUpInputWrap}>
+                          <Ionicons name="lock-closed-outline" size={17} color={COLORS.muted} />
+                          <TextInput
+                            value={password}
+                            onChangeText={setPassword}
+                            style={styles.signUpInput}
+                            placeholder={isLoginMode ? 'Your password' : 'At least 8 characters'}
+                            placeholderTextColor="#9A9291"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            autoComplete={isLoginMode ? 'current-password' : 'new-password'}
+                            secureTextEntry={!passwordVisible}
+                            returnKeyType={isLoginMode ? 'done' : 'next'}
+                            maxLength={128}
+                            onSubmitEditing={isLoginMode ? handleSubmit : undefined}
+                            accessibilityLabel="Password"
+                          />
                           <Pressable
-                            onPress={() => setError('Password reset is not connected in this preview.')}
+                            onPress={() => setPasswordVisible((current) => !current)}
+                            hitSlop={8}
                             accessibilityRole="button"
+                            accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'}
                           >
-                            <Text style={styles.signUpForgotLink}>Forgot password?</Text>
+                            <Ionicons name={passwordVisible ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.muted} />
                           </Pressable>
-                        )}
+                        </View>
                       </View>
-                      <View style={styles.signUpInputWrap}>
-                        <Ionicons name="lock-closed-outline" size={17} color={COLORS.muted} />
-                        <TextInput
-                          value={password}
-                          onChangeText={setPassword}
-                          style={styles.signUpInput}
-                          placeholder={isLoginMode ? 'Your password' : 'At least 8 characters'}
-                          placeholderTextColor="#9A9291"
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                          autoComplete={isLoginMode ? 'current-password' : 'new-password'}
-                          secureTextEntry={!passwordVisible}
-                          returnKeyType={isLoginMode ? 'done' : 'next'}
-                          maxLength={128}
-                          onSubmitEditing={isLoginMode ? handleSubmit : undefined}
-                          accessibilityLabel="Password"
-                        />
-                        <Pressable
-                          onPress={() => setPasswordVisible((current) => !current)}
-                          hitSlop={8}
-                          accessibilityRole="button"
-                          accessibilityLabel={passwordVisible ? 'Hide password' : 'Show password'}
-                        >
-                          <Ionicons name={passwordVisible ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.muted} />
-                        </Pressable>
-                      </View>
-                    </View>
+                    )}
 
-                    {!isLoginMode && (
+                    {!isLoginMode && !isForgotMode && (
                       <View style={styles.signUpField}>
                         <Text style={styles.signUpLabel}>Confirm password</Text>
                         <View style={styles.signUpInputWrap}>
@@ -1543,37 +1679,43 @@ function AccountAccessScreen({
                       style={({ pressed }) => [styles.signUpSubmit, pressed && styles.primaryButtonPressed]}
                       accessibilityRole="button"
                     >
-                      <Text style={styles.signUpSubmitText}>{isLoginMode ? 'Log in' : 'Create account'}</Text>
+                      <Text style={styles.signUpSubmitText}>
+                        {isLoginMode ? 'Log in' : isForgotMode ? 'Send reset link' : 'Create account'}
+                      </Text>
                       <Ionicons name="arrow-forward" size={17} color={COLORS.card} />
                     </Pressable>
 
-                    <View style={styles.socialDivider}>
-                      <View style={styles.socialDividerLine} />
-                      <Text style={styles.socialDividerText}>OR CONTINUE WITH</Text>
-                      <View style={styles.socialDividerLine} />
-                    </View>
-                    <View style={styles.socialProviderRow}>
-                      <Pressable
-                        onPress={() => handleProviderSignIn('Google')}
-                        style={({ pressed }) => [styles.socialProviderButton, pressed && styles.pressed]}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Continue with Google to ${isLoginMode ? 'log in' : 'sign up'}`}
-                      >
-                        <Ionicons name="logo-google" size={18} color="#4285F4" />
-                        <Text style={styles.socialProviderText}>Google</Text>
-                      </Pressable>
-                      <Pressable
-                        onPress={() => handleProviderSignIn('Apple')}
-                        style={({ pressed }) => [styles.socialProviderButton, styles.appleProviderButton, pressed && styles.pressed]}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Continue with Apple to ${isLoginMode ? 'log in' : 'sign up'}`}
-                      >
-                        <Ionicons name="logo-apple" size={18} color={COLORS.card} />
-                        <Text style={[styles.socialProviderText, styles.appleProviderText]}>Apple</Text>
-                      </Pressable>
-                    </View>
-                    {providerNotice.length > 0 && (
-                      <Text style={styles.socialProviderNotice} accessibilityRole="alert">{providerNotice}</Text>
+                    {!isForgotMode && (
+                      <>
+                        <View style={styles.socialDivider}>
+                          <View style={styles.socialDividerLine} />
+                          <Text style={styles.socialDividerText}>OR CONTINUE WITH</Text>
+                          <View style={styles.socialDividerLine} />
+                        </View>
+                        <View style={styles.socialProviderRow}>
+                          <Pressable
+                            onPress={() => handleProviderSignIn('Google')}
+                            style={({ pressed }) => [styles.socialProviderButton, pressed && styles.pressed]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Continue with Google to ${isLoginMode ? 'log in' : 'sign up'}`}
+                          >
+                            <Ionicons name="logo-google" size={18} color="#4285F4" />
+                            <Text style={styles.socialProviderText}>Google</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleProviderSignIn('Apple')}
+                            style={({ pressed }) => [styles.socialProviderButton, styles.appleProviderButton, pressed && styles.pressed]}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Continue with Apple to ${isLoginMode ? 'log in' : 'sign up'}`}
+                          >
+                            <Ionicons name="logo-apple" size={18} color={COLORS.card} />
+                            <Text style={[styles.socialProviderText, styles.appleProviderText]}>Apple</Text>
+                          </Pressable>
+                        </View>
+                        {providerNotice.length > 0 && (
+                          <Text style={styles.socialProviderNotice} accessibilityRole="alert">{providerNotice}</Text>
+                        )}
+                      </>
                     )}
                   </View>
 
@@ -1582,18 +1724,34 @@ function AccountAccessScreen({
                     <Text style={styles.signUpPrivacyText}>
                       {isLoginMode
                         ? 'Login is a preview: credentials aren’t checked or saved, and Google/Apple need OAuth setup.'
-                        : 'Sign-up is a preview: passwords aren’t sent or saved, and Google/Apple need OAuth setup.'}
+                        : isForgotMode
+                          ? 'Password reset emails can’t be sent until an authentication service is connected.'
+                          : 'Sign-up is a preview: passwords and verification emails aren’t sent or saved; Google/Apple need OAuth setup.'}
                     </Text>
                   </View>
-                  <Pressable onPress={switchMode} style={styles.signUpModeSwitch} accessibilityRole="button">
+                  <Pressable
+                    onPress={isForgotMode ? returnToLogin : switchMode}
+                    style={styles.signUpModeSwitch}
+                    accessibilityRole="button"
+                  >
                     <Text style={styles.signUpModeSwitchText}>
-                      {isLoginMode ? 'New to Daybook? ' : 'Already have an account? '}
-                      <Text style={styles.signUpModeLink}>{isLoginMode ? 'Sign up' : 'Log in'}</Text>
+                      {isForgotMode
+                        ? 'Remembered your password? '
+                        : isLoginMode
+                          ? 'New to Daybook? '
+                          : 'Already have an account? '}
+                      <Text style={styles.signUpModeLink}>
+                        {isForgotMode ? 'Log in' : isLoginMode ? 'Sign up' : 'Log in'}
+                      </Text>
                     </Text>
                   </Pressable>
                   <Pressable onPress={onClose} style={styles.signUpSkip} accessibilityRole="button">
                     <Text style={styles.signUpSkipText}>
-                      {isLoginMode ? 'Continue without logging in' : 'Keep using Daybook on this device'}
+                      {isForgotMode
+                        ? 'Back to Daybook'
+                        : isLoginMode
+                          ? 'Continue without logging in'
+                          : 'Keep using Daybook on this device'}
                     </Text>
                   </Pressable>
                 </>
@@ -1845,6 +2003,9 @@ const styles = StyleSheet.create({
   socialProviderText: { color: COLORS.ink, fontFamily: FONT.semibold, fontSize: 12 },
   appleProviderText: { color: COLORS.card },
   socialProviderNotice: { color: COLORS.muted, fontFamily: FONT.medium, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 10 },
+  authSecondaryButton: { minHeight: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F4ECE8', borderRadius: 21, marginTop: 9, paddingHorizontal: 14 },
+  authSecondaryText: { color: COLORS.brand, fontFamily: FONT.semibold, fontSize: 12 },
+  resetStepIcon: { backgroundColor: '#94734A' },
   signUpPrivacyNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: '#F1E9E5', borderRadius: 13, paddingHorizontal: 12, paddingVertical: 11, marginTop: 13 },
   signUpPrivacyText: { flex: 1, color: COLORS.muted, fontFamily: FONT.medium, fontSize: 11, lineHeight: 16 },
   signUpModeSwitch: { alignItems: 'center', justifyContent: 'center', minHeight: 34, marginTop: 5 },
